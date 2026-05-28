@@ -1,0 +1,353 @@
+import { useState, useEffect } from 'react';
+import api from '../api/axios';
+import Button from '../components/Button';
+import Input from '../components/Input';
+import { useAuth } from '../store/AuthContext';
+import { Users, Plus, Search, Edit2, Trash2, Shield, Mail, AlertCircle, X, ShieldAlert, Check } from 'lucide-react';
+
+const ROLE_BADGES = {
+    Admin: 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20',
+    HSE: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20',
+    Supervisor: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20',
+    Manager: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20',
+    Operator: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20',
+    Kontraktor: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20',
+};
+
+const UsersPage = () => {
+    const { user: currentUser } = useAuth();
+    const [users, setUsers] = useState([]);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [successMessage, setSuccessMessage] = useState('');
+
+    // Modal control
+    const [showModal, setShowModal] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editingUserId, setEditingUserId] = useState(null);
+
+    // Form data
+    const [formData, setFormData] = useState({
+        nama: '',
+        email: '',
+        password: '',
+        role: 'Operator'
+    });
+
+    useEffect(() => {
+        fetchUsers();
+    }, []);
+
+    const fetchUsers = async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const res = await api.get('/users');
+            setUsers(res.data);
+        } catch (err) {
+            setError(err.response?.data?.message || 'Gagal memuat daftar user.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleOpenAdd = () => {
+        setFormData({ nama: '', email: '', password: '', role: 'Operator' });
+        setIsEditing(false);
+        setEditingUserId(null);
+        setError('');
+        setShowModal(true);
+    };
+
+    const handleOpenEdit = (user) => {
+        setFormData({
+            nama: user.nama,
+            email: user.email,
+            password: '', // blank by default when updating
+            role: user.role
+        });
+        setIsEditing(true);
+        setEditingUserId(user.id_user);
+        setError('');
+        setShowModal(true);
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setSuccessMessage('');
+        try {
+            if (isEditing) {
+                // If editing and password is left empty, omit it from the payload
+                const payload = { ...formData };
+                if (!payload.password) delete payload.password;
+                
+                await api.put(`/users/${editingUserId}`, payload);
+                setSuccessMessage('User berhasil diperbarui.');
+            } else {
+                await api.post('/users', formData);
+                setSuccessMessage('User baru berhasil ditambahkan.');
+            }
+            setShowModal(false);
+            fetchUsers();
+            
+            // Clear alert after 3 seconds
+            setTimeout(() => setSuccessMessage(''), 3000);
+        } catch (err) {
+            setError(err.response?.data?.message || 'Terjadi kesalahan saat menyimpan data.');
+        }
+    };
+
+    const handleDelete = async (id, nama) => {
+        if (id === currentUser?.id) {
+            alert('Anda tidak bisa menghapus akun Anda sendiri.');
+            return;
+        }
+        if (confirm(`Apakah Anda yakin ingin menghapus user "${nama}"?`)) {
+            setError('');
+            try {
+                await api.delete(`/users/${id}`);
+                setSuccessMessage('User berhasil dihapus.');
+                fetchUsers();
+                setTimeout(() => setSuccessMessage(''), 3000);
+            } catch (err) {
+                setError(err.response?.data?.message || 'Gagal menghapus user.');
+            }
+        }
+    };
+
+    const filteredUsers = users.filter(u => 
+        u.nama.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.role.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    return (
+        <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Manajemen User</h1>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Kelola hak akses dan peran para pengguna aplikasi.</p>
+                </div>
+                <Button onClick={handleOpenAdd} className="flex items-center gap-2 w-full sm:w-auto justify-center rounded-2xl py-3 px-6 shadow-xl shadow-blue-500/20">
+                    <Plus size={18} /> Tambah User
+                </Button>
+            </div>
+
+            {/* Success Alert */}
+            {successMessage && (
+                <div className="flex items-center gap-3 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl animate-in slide-in-from-top-4 duration-300">
+                    <div className="p-1.5 bg-emerald-500 rounded-xl text-white shrink-0">
+                        <Check size={16} />
+                    </div>
+                    <p className="text-sm font-medium text-emerald-800 dark:text-emerald-400">{successMessage}</p>
+                </div>
+            )}
+
+            {/* Error Alert */}
+            {error && (
+                <div className="flex items-center gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-2xl animate-in slide-in-from-top-4 duration-300">
+                    <div className="p-1.5 bg-red-500 rounded-xl text-white shrink-0">
+                        <AlertCircle size={16} />
+                    </div>
+                    <p className="text-sm font-medium text-red-800 dark:text-red-400">{error}</p>
+                </div>
+            )}
+
+            {/* Filter and Search */}
+            <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800">
+                <div className="relative w-full md:max-w-md group">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+                    <input
+                        type="text"
+                        placeholder="Cari user berdasarkan nama, email, atau role..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-11 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    />
+                </div>
+                <div className="text-xs text-slate-400 font-medium self-end md:self-auto">
+                    Total: {filteredUsers.length} user
+                </div>
+            </div>
+
+            {/* User List/Table */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left">
+                        <thead>
+                            <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
+                                <th className="px-6 py-4">User</th>
+                                <th className="px-6 py-4">Email</th>
+                                <th className="px-6 py-4">Role</th>
+                                <th className="px-6 py-4">Terdaftar Pada</th>
+                                <th className="px-6 py-4 text-right">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                            {loading ? (
+                                <tr>
+                                    <td colSpan="5" className="px-6 py-16 text-center">
+                                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600 mx-auto"></div>
+                                        <p className="text-slate-400 text-sm mt-3 font-medium">Memuat data user...</p>
+                                    </td>
+                                </tr>
+                            ) : filteredUsers.length === 0 ? (
+                                <tr>
+                                    <td colSpan="5" className="px-6 py-16 text-center">
+                                        <Users size={40} className="mx-auto mb-3 text-slate-300 dark:text-slate-700" />
+                                        <p className="text-slate-400 font-medium text-sm">Tidak ada user yang ditemukan.</p>
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredUsers.map((u) => {
+                                    const isSelf = u.id_user === currentUser?.id;
+                                    return (
+                                        <tr key={u.id_user} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-2xl bg-blue-600/10 text-blue-600 dark:text-blue-400 font-bold flex items-center justify-center text-base uppercase border border-blue-500/20">
+                                                        {u.nama.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                                            {u.nama}
+                                                            {isSelf && (
+                                                                <span className="text-[10px] font-black bg-blue-500 text-white px-2 py-0.5 rounded-full uppercase">Saya</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-slate-600 dark:text-slate-300 text-sm font-medium">
+                                                <div className="flex items-center gap-1.5">
+                                                    <Mail size={14} className="text-slate-400" />
+                                                    {u.email}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${ROLE_BADGES[u.role] || ROLE_BADGES.Operator}`}>
+                                                    <Shield size={11} /> {u.role}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-slate-500 text-xs font-medium">
+                                                {new Date(u.createdAt).toLocaleDateString('id-ID', {
+                                                    day: '2-digit',
+                                                    month: 'long',
+                                                    year: 'numeric'
+                                                })}
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    <button
+                                                        onClick={() => handleOpenEdit(u)}
+                                                        className="p-2 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all"
+                                                        title="Edit User"
+                                                    >
+                                                        <Edit2 size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(u.id_user, u.nama)}
+                                                        disabled={isSelf}
+                                                        className={`p-2 rounded-xl transition-all ${isSelf ? 'text-slate-200 dark:text-slate-800 cursor-not-allowed' : 'text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                                                        title={isSelf ? 'Anda tidak bisa menghapus diri sendiri' : 'Hapus User'}
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Add/Edit Modal */}
+            {showModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-slate-800 border-t-8 border-blue-600 w-full max-w-lg rounded-3xl p-6 md:p-8 shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tighter flex items-center gap-2">
+                                {isEditing ? <Edit2 size={20} className="text-blue-600" /> : <Plus size={20} className="text-blue-600" />}
+                                {isEditing ? 'Perbarui Akun User' : 'Tambah User Baru'}
+                            </h2>
+                            <button
+                                onClick={() => setShowModal(false)}
+                                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <Input
+                                label="Nama Lengkap"
+                                placeholder="Contoh: Budi Santoso"
+                                value={formData.nama}
+                                onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
+                                required
+                            />
+                            
+                            <Input
+                                label="Alamat Email"
+                                type="email"
+                                placeholder="budi@perusahaan.com"
+                                value={formData.email}
+                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                required
+                            />
+
+                            <div className="flex flex-col gap-1.5 w-full">
+                                <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Hak Akses / Peran</label>
+                                <select
+                                    value={formData.role}
+                                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                                    required
+                                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                >
+                                    <option value="Operator">Operator</option>
+                                    <option value="Admin">Admin</option>
+                                    <option value="HSE">HSE</option>
+                                    <option value="Supervisor">Supervisor</option>
+                                    <option value="Manager">Manager</option>
+                                    <option value="Kontraktor">Kontraktor</option>
+                                </select>
+                            </div>
+
+                            <Input
+                                label={isEditing ? 'Kata Sandi Baru (Kosongkan jika tidak diubah)' : 'Kata Sandi'}
+                                type="password"
+                                placeholder={isEditing ? '••••••••' : 'Buat kata sandi minimal 6 karakter'}
+                                value={formData.password}
+                                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                required={!isEditing}
+                            />
+
+                            {isEditing && (
+                                <div className="flex gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
+                                    <ShieldAlert size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                                    <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
+                                        Perubahan kata sandi bersifat opsional saat mengedit data user.
+                                    </p>
+                                </div>
+                            )}
+
+                            <div className="flex gap-4 pt-4">
+                                <Button type="button" variant="ghost" onClick={() => setShowModal(false)} className="flex-1 rounded-2xl py-4">Batal</Button>
+                                <Button type="submit" className="flex-1 rounded-2xl py-4 shadow-xl shadow-blue-500/20">
+                                    {isEditing ? 'Simpan Perubahan' : 'Tambah User'}
+                                </Button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default UsersPage;

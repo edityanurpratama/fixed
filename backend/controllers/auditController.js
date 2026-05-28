@@ -1,0 +1,33 @@
+const Audit = require('../models/Audit');
+const User = require('../models/User');
+
+const createAudit = async (req, res) => {
+    try {
+        const { area, tanggal, hasil, qr_code_asset, checklist_items } = req.body;
+        const audit = await Audit.create({
+            auditor_id: req.user.id,
+            area,
+            tanggal,
+            hasil,
+            qr_code_asset,
+            checklist_items,
+        });
+        res.status(201).json(audit);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const getAudits = async (req, res) => {
+    try {
+        const audits = await Audit.findAll({
+            include: [{ model: User, as: 'auditor', attributes: ['nama'] }],
+            order: [['tanggal', 'DESC']],
+        });
+        res.json(audits);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+module.exports = { createAudit, getAudits };
