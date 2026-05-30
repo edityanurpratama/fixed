@@ -3,10 +3,10 @@
 ### Modul Data Science - WellGuard Fatigue Prediction
 
 ---
-
 | **Kode Capstone** | CC26-PRU428 |
 | **Nama Proyek** | Nuraga: Integrated Safety Intelligence System |
 | **Modul** | Data Science |
+| **Penulis** | Aldi Tri Maulana & Linda Anggara Wati |
 | **Tim** | CC26-PRU428 |
 
 ---
@@ -431,5 +431,3 @@ D:\fixed\datascience\
 ---
 
 *"Nuraga hadir agar pekerja tidak hanya menjadi angka dalam statistik kecelakaan, tetapi manusia yang dilindungi oleh teknologi prediktif."*
-
-```
