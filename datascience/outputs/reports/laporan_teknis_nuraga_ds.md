@@ -6,7 +6,7 @@
 | **Kode Capstone** | CC26-PRU428 |
 | **Nama Proyek** | Nuraga: Integrated Safety Intelligence System |
 | **Modul** | Data Science |
-| **Penulis** | Aldi Tri Maulana & Linda Anggara Wati |
+| **Penulis** | Linda Anggara Wati |
 | **Tim** | CC26-PRU428 |
 
 ---
