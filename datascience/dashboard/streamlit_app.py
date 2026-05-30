@@ -12,6 +12,7 @@ import seaborn as sns
 import torch
 import torch.nn as nn
 from datetime import datetime
+import pathlib
 
 # =====================================================
 # PAGE CONFIG
@@ -181,11 +182,10 @@ else:
 # =====================================================
 # LOAD & CLEAN DATA
 # =====================================================
-
 @st.cache_data
 def load_data():
-    df = pd.read_csv("wellguard.csv")
-
+    DASHBOARD_DIR = pathlib.Path(__file__).parent
+    df = pd.read_csv(DASHBOARD_DIR / "wellguard.csv")
     # sex_label sudah ada di CSV — gunakan langsung, jangan re-map
     # Isi NaN sex_label dengan 'Unknown'
     df['sex_label'] = df['sex_label'].fillna('Unknown')
