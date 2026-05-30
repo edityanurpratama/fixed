@@ -41,47 +41,15 @@ Dashboard interaktif yang menampilkan metrik keselamatan kerja secara real-time:
 
 ## Cara Kerja Nuraga
 
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                              NURAGA PLATFORM                                │
-└──────────────────────────────────────────────────────────────────────────────┘
-
-                               ┌─────────────┐
-                               │ 👷 Pekerja │
-                               └──────┬──────┘
-                                      │
-                                      ▼
-
-┌────────────────────┬────────────────────┬────────────────────┐
-│   ⚠️ Hazard NLP    │    😴 WellGuard     │   📜 Sertifikasi   │
-│                    │                    │                    │
-│ Analisis laporan   │ Monitoring fatigue │ Validasi & tracking│
-│ bahaya kerja       │ dan kondisi pekerja│ sertifikasi pekerja│
-└─────────┬──────────┴─────────┬──────────┴─────────┬──────────┘
-          │                    │                    │
-          └────────────────────┼────────────────────┘
-                               │
-                               ▼
-
-                    ┌───────────────────────┐
-                    │      🧠 AI ENGINE      │
-                    │      TensorFlow        │
-                    └───────────┬───────────┘
-                                │
-                                ▼
-
-                    ┌───────────────────────┐
-                    │ 📊 Dashboard & Alert  │
-                    │ Analytics, Insight &  │
-                    │ Notification System   │
-                    └───────────┬───────────┘
-                                │
-                                ▼
-
-                        ┌───────────────┐
-                        │  👔 Manajer K3 │
-                        └───────────────┘
-    
-
+| Langkah | Proses | Keterangan |
+|:---:|:---|:---|
+| **1** | 👷 **Input dari Pekerja** | Laporan bahaya, data jam kerja/shift, data sertifikasi |
+| **2** | ⚠️ **Hazard NLP** | Mengklasifikasikan laporan bahaya ke dalam kategori risiko |
+| **3** | 😴 **WellGuard** | Memprediksi tingkat kelelahan pekerja |
+| **4** | 📜 **Manajemen Sertifikasi** | Mengelola data kompetensi & masa berlaku sertifikat |
+| **5** | 🧠 **AI Engine (TensorFlow)** | Memproses seluruh data dengan model custom |
+| **6** | 📊 **Dashboard & Notifikasi** | Menampilkan metrik K3 dan mengirim notifikasi |
+| **7** | 👔 **Manajer K3** | Melihat data, menganalisis, dan mengambil tindakan |
 
 ## Manfaat untuk Perusahaan
 
