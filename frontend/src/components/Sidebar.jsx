@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import Button from './Button';
 import {
     LayoutDashboard, AlertCircle, FileText, CheckSquare, Settings, LogOut,
-    Shield, Award, Zap, FileCheck, X, Users, ClipboardList, Trophy, History
+    Shield, Award, Zap, FileCheck, X, Users, ClipboardList, Trophy, History, HeartPulse, Clock
 } from 'lucide-react';
 import { useAuth } from '../store/AuthContext';
 
@@ -27,6 +27,7 @@ const Sidebar = ({ onClose }) => {
             section: 'UTAMA',
             items: [
                 { name: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/', roles: ['Admin', 'HSE', 'Supervisor', 'Manager', 'Staff', 'Operator', 'Vendor', 'Kontraktor'] },
+                { name: 'Absensi Harian', icon: <Clock size={20} />, path: '/attendance', roles: ['Admin', 'HSE', 'Supervisor', 'Manager', 'Staff', 'Operator', 'Vendor', 'Kontraktor'] },
             ],
         },
         {

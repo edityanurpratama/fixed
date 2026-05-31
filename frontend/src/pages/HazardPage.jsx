@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import api from '../api/axios';
@@ -23,7 +23,62 @@ const HazardPage = () => {
     const [analyzing, setAnalyzing] = useState(false);
     const [formData, setFormData] = useState({ lokasi: '', deskripsi: '', risiko: 'Low', koordinat_gps: '' });
     const [file, setFile] = useState(null);
+    const [preview, setPreview] = useState(null);
     const [aiPredictedRisk, setAiPredictedRisk] = useState(null);
+    const [selectedHazard, setSelectedHazard] = useState(null);
+
+    const videoRef = useRef(null);
+    const [isCameraActive, setIsCameraActive] = useState(false);
+
+    const startCamera = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+            });
+            setIsCameraActive(true);
+            setTimeout(() => {
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                }
+            }, 150);
+        } catch (err) {
+            alert('Gagal mengakses kamera: ' + err.message);
+        }
+    };
+
+    const stopCamera = () => {
+        if (videoRef.current && videoRef.current.srcObject) {
+            const tracks = videoRef.current.srcObject.getTracks();
+            tracks.forEach(track => track.stop());
+            videoRef.current.srcObject = null;
+        }
+        setIsCameraActive(false);
+    };
+
+    const capturePhoto = () => {
+        const video = videoRef.current;
+        if (!video) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+            const f = new File([blob], `hazard-${Date.now()}.jpg`, { type: 'image/jpeg' });
+            setFile(f);
+            setPreview(URL.createObjectURL(blob));
+            stopCamera();
+        }, 'image/jpeg', 0.95);
+    };
+
+    useEffect(() => {
+        return () => {
+            if (videoRef.current && videoRef.current.srcObject) {
+                const tracks = videoRef.current.srcObject.getTracks();
+                tracks.forEach(track => track.stop());
+            }
+        };
+    }, []);
 
     // Auto open form if redirected from dashboard quick action
     useEffect(() => {
@@ -31,14 +86,34 @@ const HazardPage = () => {
             setShowForm(true);
         }
     }, [location]);
-    const [preview, setPreview] = useState(null);
-    const [selectedHazard, setSelectedHazard] = useState(null);
 
     const { data: hazards = [] } = useQuery({
         queryKey: ['hazards'],
         queryFn: async () => {
             const res = await api.get('/hazards');
             return res.data;
+        }
+    });
+
+    const verifyMutation = useMutation({
+        mutationFn: async (id) => {
+            const res = await api.patch(`/hazards/${id}/verify`);
+            return res.data;
+        },
+        onSuccess: (data) => {
+            setSelectedHazard(data);
+            queryClient.invalidateQueries(['hazards']);
+        }
+    });
+
+    const overrideMutation = useMutation({
+        mutationFn: async ({ id, risiko }) => {
+            const res = await api.patch(`/hazards/${id}/override`, { risiko });
+            return res.data;
+        },
+        onSuccess: (data) => {
+            setSelectedHazard(data);
+            queryClient.invalidateQueries(['hazards']);
         }
     });
 
@@ -69,6 +144,7 @@ const HazardPage = () => {
             await api.post('/hazards', data, { headers: { 'Content-Type': 'multipart/form-data' } });
         },
         onSuccess: () => {
+            stopCamera();
             setShowForm(false);
             setFormData({ lokasi: '', deskripsi: '', risiko: 'Low', koordinat_gps: '' });
             setFile(null);
@@ -113,7 +189,7 @@ const HazardPage = () => {
             {/* === FORM MODAL === */}
             {showForm && (
                 <div 
-                    onClick={() => { setShowForm(false); setPreview(null); setAiPredictedRisk(null); }}
+                    onClick={() => { stopCamera(); setShowForm(false); setPreview(null); setAiPredictedRisk(null); }}
                     className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4"
                 >
                     <div 
@@ -194,24 +270,55 @@ const HazardPage = () => {
 
                             <div className="flex flex-col gap-1.5">
                                 <label className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest px-1">Foto Bukti (Wajib untuk High/Critical)</label>
-                                <label className="cursor-pointer">
-                                    <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
-                                    {preview ? (
-                                        <div className="relative rounded-2xl overflow-hidden h-36">
-                                            <img src={preview} alt="preview" className="w-full h-full object-cover" />
-                                            <div className="absolute inset-0 bg-black/30 flex items-center justify-center text-white text-xs font-bold">Klik untuk ganti</div>
+                                {isCameraActive ? (
+                                    <div className="relative w-full overflow-hidden rounded-2xl bg-black border-4 border-blue-500 shadow-xl flex flex-col items-center justify-center aspect-[4/3] group animate-in zoom-in-95">
+                                        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                                        <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-3 px-4 z-20">
+                                            <button
+                                                type="button"
+                                                onClick={stopCamera}
+                                                className="bg-red-500 hover:bg-red-600 text-white font-bold text-xs py-2.5 px-5 rounded-xl shadow-lg transition-all active:scale-95"
+                                            >
+                                                Batal
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={capturePhoto}
+                                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 px-6 rounded-xl shadow-lg transition-all flex items-center gap-1.5 active:scale-95"
+                                            >
+                                                <Camera size={14} /> Ambil Foto
+                                            </button>
                                         </div>
-                                    ) : (
-                                        <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl h-28 flex flex-col items-center justify-center text-slate-400 hover:border-blue-400 transition-colors">
-                                            <Camera size={24} className="mb-2" />
-                                            <span className="text-xs font-bold">Klik untuk unggah foto</span>
-                                        </div>
-                                    )}
-                                </label>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <label className="cursor-pointer">
+                                            <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+                                            {preview ? (
+                                                <div className="relative rounded-2xl overflow-hidden h-36">
+                                                    <img src={preview} alt="preview" className="w-full h-full object-cover" />
+                                                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center text-white text-xs font-bold">Klik untuk ganti</div>
+                                                </div>
+                                            ) : (
+                                                <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl h-28 flex flex-col items-center justify-center text-slate-400 hover:border-blue-400 transition-colors">
+                                                    <Camera size={24} className="mb-2" />
+                                                    <span className="text-xs font-bold">Klik untuk unggah foto</span>
+                                                </div>
+                                            )}
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={startCamera}
+                                            className="mt-2 w-full bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-750 hover:bg-blue-100 dark:hover:bg-slate-700 font-bold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                                        >
+                                            <Camera size={14} /> Buka Kamera (Ambil Foto Langsung)
+                                        </button>
+                                    </>
+                                )}
                             </div>
 
                             <div className="flex gap-4 pt-2">
-                                <Button type="button" variant="ghost" onClick={() => { setShowForm(false); setPreview(null); setAiPredictedRisk(null); }} className="flex-1 rounded-2xl py-4">Batal</Button>
+                                <Button type="button" variant="ghost" onClick={() => { stopCamera(); setShowForm(false); setPreview(null); setAiPredictedRisk(null); }} className="flex-1 rounded-2xl py-4">Batal</Button>
                                 <Button type="submit" className="flex-1 rounded-2xl py-4 shadow-xl shadow-blue-500/20" loading={loading}>
                                     {loading ? 'Mengirim...' : 'Kirim Laporan'}
                                 </Button>
@@ -298,28 +405,6 @@ const HazardPage = () => {
                 const imageUrl = selectedHazard.foto ? `/uploads/${selectedHazard.foto}` : null;
                 const mapsUrl = selectedHazard.koordinat_gps ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedHazard.koordinat_gps)}` : null;
 
-                const verifyMutation = useMutation({
-                    mutationFn: async () => {
-                        const res = await api.patch(`/hazards/${selectedHazard.id_hazard}/verify`);
-                        return res.data;
-                    },
-                    onSuccess: (data) => {
-                        setSelectedHazard(data);
-                        queryClient.invalidateQueries(['hazards']);
-                    }
-                });
-
-                const overrideMutation = useMutation({
-                    mutationFn: async (newRisk) => {
-                        const res = await api.patch(`/hazards/${selectedHazard.id_hazard}/override`, { risiko: newRisk });
-                        return res.data;
-                    },
-                    onSuccess: (data) => {
-                        setSelectedHazard(data);
-                        queryClient.invalidateQueries(['hazards']);
-                    }
-                });
-
                 return (
                     <div 
                         onClick={() => setSelectedHazard(null)}
@@ -399,7 +484,7 @@ const HazardPage = () => {
                                      </div>
                                      <Button 
                                          className="w-full sm:w-auto px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-lg shadow-emerald-500/15 whitespace-nowrap active:scale-98"
-                                         onClick={() => verifyMutation.mutate()}
+                                         onClick={() => verifyMutation.mutate(selectedHazard.id_hazard)}
                                          disabled={verifyMutation.isPending}
                                      >
                                          {verifyMutation.isPending ? 'Memproses...' : 'Validasi Laporan'}
@@ -423,7 +508,7 @@ const HazardPage = () => {
                                         <label className="text-xs text-slate-600 dark:text-slate-400 font-bold">Ubah Risiko ke:</label>
                                         <select
                                             value={selectedHazard.risiko}
-                                            onChange={(e) => overrideMutation.mutate(e.target.value)}
+                                            onChange={(e) => overrideMutation.mutate({ id: selectedHazard.id_hazard, risiko: e.target.value })}
                                             disabled={overrideMutation.isPending}
                                             className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-black text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                         >

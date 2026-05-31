@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import api from '../api/axios';
@@ -22,6 +22,66 @@ const IncidentPage = () => {
         five_whys: { why1: '', why2: '', why3: '', why4: '', why5: '' }
     });
     const [file, setFile] = useState(null);
+    const [preview, setPreview] = useState(null);
+
+    const videoRef = useRef(null);
+    const [isCameraActive, setIsCameraActive] = useState(false);
+
+    const handleFileChange = (e) => {
+        const f = e.target.files[0];
+        setFile(f);
+        if (f) setPreview(URL.createObjectURL(f));
+    };
+
+    const startCamera = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+            });
+            setIsCameraActive(true);
+            setTimeout(() => {
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                }
+            }, 150);
+        } catch (err) {
+            alert('Gagal mengakses kamera: ' + err.message);
+        }
+    };
+
+    const stopCamera = () => {
+        if (videoRef.current && videoRef.current.srcObject) {
+            const tracks = videoRef.current.srcObject.getTracks();
+            tracks.forEach(track => track.stop());
+            videoRef.current.srcObject = null;
+        }
+        setIsCameraActive(false);
+    };
+
+    const capturePhoto = () => {
+        const video = videoRef.current;
+        if (!video) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+            const f = new File([blob], `incident-${Date.now()}.jpg`, { type: 'image/jpeg' });
+            setFile(f);
+            setPreview(URL.createObjectURL(blob));
+            stopCamera();
+        }, 'image/jpeg', 0.95);
+    };
+
+    useEffect(() => {
+        return () => {
+            if (videoRef.current && videoRef.current.srcObject) {
+                const tracks = videoRef.current.srcObject.getTracks();
+                tracks.forEach(track => track.stop());
+            }
+        };
+    }, []);
 
     const [selectedIncident, setSelectedIncident] = useState(null);
     const [investigationData, setInvestigationData] = useState({
@@ -63,12 +123,14 @@ const IncidentPage = () => {
             });
         },
         onSuccess: () => {
+            stopCamera();
             setShowForm(false);
             setFormData({
                 kategori: 'Near Miss', kronologi: '', korban: '', loss_cost: 0,
                 five_whys: { why1: '', why2: '', why3: '', why4: '', why5: '' }
             });
             setFile(null);
+            setPreview(null);
             queryClient.invalidateQueries(['incidents']);
         },
         onError: (err) => {
@@ -135,7 +197,7 @@ const IncidentPage = () => {
 
             {showForm && (
                 <div 
-                    onClick={() => setShowForm(false)}
+                    onClick={() => { stopCamera(); setShowForm(false); setPreview(null); }}
                     className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4"
                 >
                     <div 
@@ -212,22 +274,61 @@ const IncidentPage = () => {
                                 />
                                 <div className="flex flex-col gap-1.5">
                                     <label className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest px-1">Dokumentasi Foto</label>
-                                    <div className="relative group">
-                                        <input
-                                            type="file"
-                                            className="absolute inset-0 opacity-0 cursor-pointer"
-                                            onChange={(e) => setFile(e.target.files[0])}
-                                        />
-                                        <div className="px-4 py-3 bg-white dark:bg-slate-900/50 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl flex items-center gap-3 text-slate-400 group-hover:bg-slate-50 dark:group-hover:bg-slate-800 transition-all">
-                                            <Camera size={18} />
-                                            <span className="text-xs font-bold">{file ? file.name : 'Upload Foto Insiden'}</span>
+                                    {isCameraActive ? (
+                                        <div className="relative w-full overflow-hidden rounded-2xl bg-black border-4 border-red-500 shadow-xl flex flex-col items-center justify-center aspect-[4/3] group animate-in zoom-in-95">
+                                            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                                            <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-3 px-4 z-20">
+                                                <button
+                                                    type="button"
+                                                    onClick={stopCamera}
+                                                    className="bg-red-500 hover:bg-red-600 text-white font-bold text-xs py-2.5 px-5 rounded-xl shadow-lg transition-all active:scale-95"
+                                                >
+                                                    Batal
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={capturePhoto}
+                                                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 px-6 rounded-xl shadow-lg transition-all flex items-center gap-1.5 active:scale-95"
+                                                >
+                                                    <Camera size={14} /> Ambil Foto
+                                                </button>
+                                            </div>
                                         </div>
-                                    </div>
+                                    ) : (
+                                        <>
+                                            <div className="relative group">
+                                                <input
+                                                    type="file"
+                                                    className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                                                    accept="image/*"
+                                                    onChange={handleFileChange}
+                                                />
+                                                {preview ? (
+                                                    <div className="relative rounded-2xl overflow-hidden h-36">
+                                                        <img src={preview} alt="preview" className="w-full h-full object-cover" />
+                                                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center text-white text-xs font-bold">Klik untuk ganti</div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="px-4 py-3 bg-white dark:bg-slate-900/50 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl flex items-center gap-3 text-slate-400 group-hover:bg-slate-50 dark:group-hover:bg-slate-800 transition-all">
+                                                        <Camera size={18} />
+                                                        <span className="text-xs font-bold">Upload Foto Insiden</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={startCamera}
+                                                className="mt-2 w-full bg-red-50 dark:bg-slate-800 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-750 hover:bg-red-100 dark:hover:bg-slate-700 font-bold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                                            >
+                                                <Camera size={14} /> Buka Kamera (Ambil Foto Langsung)
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
 
                             <div className="flex gap-4 pt-4">
-                                <Button type="button" variant="ghost" onClick={() => setShowForm(false)} className="flex-1 rounded-2xl py-4">Kembali</Button>
+                                <Button type="button" variant="ghost" onClick={() => { stopCamera(); setShowForm(false); setPreview(null); }} className="flex-1 rounded-2xl py-4">Kembali</Button>
                                 <Button type="submit" variant="danger" className="flex-1 rounded-2xl py-4 shadow-lg shadow-red-500/20" loading={loading}>{loading ? 'Mengirim...' : 'Kirim Investigasi'}</Button>
                             </div>
                         </form>

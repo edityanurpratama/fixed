@@ -9,11 +9,7 @@ import { generateMonthlyReport } from '../utils/reportGenerator';
 import Button from '../components/Button';
 import { useAuth } from '../store/AuthContext';
 
-const FFD_QUESTIONS = [
-    { id: 1, text: 'Apakah Anda tidur cukup (lebih dari 6 jam) semalam?' },
-    { id: 2, text: 'Apakah Anda dalam kondisi sehat fisik hari ini?' },
-    { id: 3, text: 'Apakah Anda bebas dari pengaruh obat-obatan atau alkohol?' },
-];
+
 
 const getGreeting = () => {
     const hour = new Date().getHours();
@@ -47,17 +43,9 @@ const DashboardPage = () => {
     const [totalUsersCount, setTotalUsersCount] = useState(0);
     const [sloganIndex, setSloganIndex] = useState(0);
 
-    // Fit for Duty state — must be before any early returns
-    const [ffdState, setFfdState] = useState(() => {
-        const savedStatus = localStorage.getItem('ffd_status');
-        const savedDate = localStorage.getItem('ffd_date');
-        const today = new Date().toDateString();
-        if (savedStatus && savedDate === today) {
-            return savedStatus;
-        }
-        return 'pending';
-    });
-    const [ffdAnswers, setFfdAnswers] = useState({ 1: null, 2: null, 3: null });
+    const [attendance, setAttendance] = useState({ clockedIn: false, clockedOut: false, fatigue_status: null });
+    const [showAttendancePopup, setShowAttendancePopup] = useState(false);
+    const [showReminderBanner, setShowReminderBanner] = useState(false);
 
     const [activePermitsCount, setActivePermitsCount] = useState(0);
     const [permits, setPermits] = useState([]);
@@ -105,13 +93,7 @@ const DashboardPage = () => {
         }
     };
 
-    const handleStartCheckIn = () => {
-        if (expiredCertifications.length > 0) {
-            alert(`Akses Diblokir! SIO/Lisensi Anda (${expiredCertifications.map(c => c.jenis_sertifikasi).join(', ')}) telah kedaluwarsa. Harap segera melapor ke Safety Officer.`);
-            return;
-        }
-        setFfdState('answering');
-    };
+
 
     const [myHazards, setMyHazards] = useState([]);
     const [totalActions, setTotalActions] = useState([]);
@@ -278,6 +260,23 @@ const DashboardPage = () => {
                 if (user.role === 'Admin') {
                     setTotalUsersCount(dashboardData.users.length);
                 }
+
+                // Fetch attendance status & trigger popup/banner
+                (async () => {
+                    try {
+                        const attRes = await api.get('/attendance/today');
+                        const attData = attRes.data;
+                        setAttendance(attData);
+                        if (!attData.clockedIn) {
+                            setShowAttendancePopup(true);
+                            if (new Date().getHours() >= 9) {
+                                setShowReminderBanner(true);
+                            }
+                        }
+                    } catch (err) {
+                        // Silently ignore attendance fetch errors
+                    }
+                })();
             }
         }
 
@@ -309,22 +308,7 @@ const DashboardPage = () => {
         return () => clearInterval(interval);
     }, []);
 
-    const handleFfdAnswer = (questionId, answer) => {
-        const updated = { ...ffdAnswers, [questionId]: answer };
-        setFfdAnswers(updated);
 
-        // Check if all answered
-        const allAnswered = Object.values(updated).every(v => v !== null);
-        if (allAnswered) {
-            const allYes = Object.values(updated).every(v => v === true);
-            const status = allYes ? 'passed' : 'blocked';
-            setTimeout(() => {
-                setFfdState(status);
-                localStorage.setItem('ffd_status', status);
-                localStorage.setItem('ffd_date', new Date().toDateString());
-            }, 400);
-        }
-    };
 
     const statCards = [
         {
@@ -415,230 +399,84 @@ const DashboardPage = () => {
     const isFieldRole = ['Staff', 'Operator', 'Vendor', 'Kontraktor'].includes(user?.role);
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">            {/* === FIT FOR DUTY CHECK-IN === */}
-            {user?.role === 'Admin' ? (
-                ffdState === 'answering' ? (
-                    <div className="bg-white dark:bg-slate-900 border-2 border-blue-500 rounded-[2rem] p-8 shadow-2xl shadow-blue-500/10 animate-in zoom-in-95 duration-200">
-                        <div className="flex justify-between items-start mb-8">
-                            <div>
-                                <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tighter flex items-center gap-3">
-                                    <Shield size={24} className="text-blue-600" /> Fit For Duty — Kuisioner Harian
-                                </h2>
-                                <p className="text-slate-505 text-sm mt-1">Jawab 3 pertanyaan singkat berikut dengan jujur.</p>
-                            </div>
-                            <button onClick={() => setFfdState('pending')} className="p-2 text-slate-400 hover:text-slate-600 transition-colors">
-                                <X size={18} />
-                            </button>
+        <div className="space-y-8 animate-in fade-in duration-500">
+
+            {/* === POPUP ABSENSI === */}
+            {showAttendancePopup && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-100 dark:border-slate-800 relative">
+                        <button onClick={() => setShowAttendancePopup(false)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 bg-slate-100 dark:bg-slate-800 rounded-full">
+                            <X size={20} />
+                        </button>
+                        <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mb-6 mx-auto">
+                            <Clock className="w-8 h-8" />
                         </div>
-                        <div className="space-y-6">
-                            {FFD_QUESTIONS.map((q, i) => (
-                                <div key={q.id} className="p-5 bg-slate-50 dark:bg-slate-800 rounded-2xl">
-                                    <p className="font-bold text-slate-800 dark:text-slate-200 mb-4">
-                                        <span className="text-blue-600 font-black mr-2">{i + 1}.</span>{q.text}
-                                    </p>
-                                    <div className="flex gap-3">
-                                        <button
-                                            onClick={() => handleFfdAnswer(q.id, true)}
-                                            className={`flex-1 py-3 rounded-xl font-black text-sm transition-all ${ffdAnswers[q.id] === true ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:border-emerald-400'}`}
-                                        >
-                                            ✓ Ya
-                                        </button>
-                                        <button
-                                            onClick={() => handleFfdAnswer(q.id, false)}
-                                            className={`flex-1 py-3 rounded-xl font-black text-sm transition-all ${ffdAnswers[q.id] === false ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:border-red-400'}`}
-                                        >
-                                            ✗ Tidak
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
+                        <h2 className="text-2xl font-black text-slate-800 dark:text-white text-center mb-2">Absensi Harian</h2>
+                        <p className="text-slate-500 dark:text-slate-400 text-center mb-6">Halo, <strong>{user?.nama}</strong>! Anda belum mencatat kehadiran hari ini. Silakan lapor kehadiran dan kondisi fatigue Anda.</p>
+                        <button onClick={() => { navigate('/attendance'); setShowAttendancePopup(false); }} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all">
+                            Menuju Halaman Absensi
+                        </button>
+                        <button onClick={() => { navigate('/attendance'); setShowAttendancePopup(false); }} className="w-full mt-3 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 py-3 rounded-xl font-bold hover:bg-orange-200 transition-all">
+                            Ajukan Izin / Cuti
+                        </button>
+                        <button onClick={() => setShowAttendancePopup(false)} className="w-full mt-2 text-slate-400 text-sm py-2 hover:text-slate-600 transition-colors">
+                            Nanti saja
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* === BANNER PERINGATAN TELAT ABSEN === */}
+            {showReminderBanner && (
+                <div className="bg-red-500 text-white p-4 rounded-2xl flex items-center justify-between gap-4 shadow-lg shadow-red-500/20">
+                    <div className="flex items-center gap-3">
+                        <AlertTriangle className="w-6 h-6 shrink-0 animate-pulse" />
+                        <div>
+                            <p className="font-bold">Peringatan: Anda belum mengisi absensi harian!</p>
+                            <p className="text-sm text-red-100">Sudah melewati pukul 09:00. Segera isi absensi dan fatigue status Anda.</p>
                         </div>
                     </div>
-                ) : (
-                    <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] shadow-sm flex flex-col md:flex-row items-stretch justify-between gap-6">
-                        {/* System Alerts & Pending Approvals */}
-                        <div className="flex-1 flex flex-col justify-center">
-                            <div className="flex items-center gap-3">
-                                <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500/20">
-                                    <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-                                </span>
-                                <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tighter">System Alerts & Pending Approvals</h3>
-                            </div>
-                            <div className="mt-2.5 flex flex-wrap gap-3">
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                                    <CheckCircle size={12} />
-                                    Database Sync: Connected
-                                </span>
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                                    <CheckCircle size={12} />
-                                    WhatsApp API: Online
-                                </span>
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400">
-                                    <Shield size={12} />
-                                    Sistem Berjalan Normal
-                                </span>
-                            </div>
-                        </div>
+                    <button onClick={() => navigate('/attendance')} className="shrink-0 bg-white text-red-600 px-4 py-2 rounded-xl font-bold text-sm hover:bg-red-50 transition-all">
+                        Isi Sekarang
+                    </button>
+                </div>
+            )}
 
-                        {/* Compact Fit for Duty Widget */}
-                        <div className="shrink-0 flex items-center bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800/50 p-4 rounded-2xl md:min-w-[280px]">
-                            {ffdState === 'pending' && (
-                                <div className="w-full flex items-center justify-between gap-4">
-                                    <div className="flex items-center gap-2">
-                                        <Shield size={20} className="text-blue-500" />
-                                        <div>
-                                            <p className="text-[11px] font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">Fit for Duty</p>
-                                            <p className="text-[9px] text-slate-400 font-medium">Belum Check-in</p>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={handleStartCheckIn}
-                                        className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-200 active:scale-95"
-                                    >
-                                        Mulai
-                                    </button>
-                                </div>
-                            )}
-                            {ffdState === 'passed' && (
-                                <div className="w-full flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-                                    <CheckCircle size={20} className="shrink-0" />
-                                    <div>
-                                        <p className="text-[11px] font-black uppercase tracking-wider">Fit for Duty</p>
-                                        <p className="text-[9px] text-emerald-500 font-medium">Confirmed (Layak Kerja)</p>
-                                    </div>
-                                </div>
-                            )}
-                            {ffdState === 'blocked' && (
-                                <div className="w-full flex items-center justify-between gap-2 text-red-600 dark:text-red-400">
-                                    <div className="flex items-center gap-2">
-                                        <AlertTriangle size={20} className="shrink-0 animate-pulse" />
-                                        <div>
-                                            <p className="text-[11px] font-black uppercase tracking-wider">Fit for Duty</p>
-                                            <p className="text-[9px] text-red-505 font-medium">Not Fit for Duty</p>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => {
-                                            setFfdState('pending');
-                                            setFfdAnswers({ 1: null, 2: null, 3: null });
-                                            localStorage.removeItem('ffd_status');
-                                            localStorage.removeItem('ffd_date');
-                                        }}
-                                        className="px-2.5 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-[9px] font-black uppercase tracking-wider"
-                                    >
-                                        Ulangi
-                                    </button>
-                                </div>
-                            )}
+            {/* === SYSTEM ALERT BAR (Admin) === */}
+            {user?.role === 'Admin' && (
+                <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2rem] shadow-sm flex flex-col md:flex-row items-stretch justify-between gap-6">
+                    <div className="flex-1 flex flex-col justify-center">
+                        <div className="flex items-center gap-3">
+                            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500/20">
+                                <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                            </span>
+                            <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tighter">System Alerts & Pending Approvals</h3>
+                        </div>
+                        <div className="mt-2.5 flex flex-wrap gap-3">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                <CheckCircle size={12} />
+                                Database Sync: Connected
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                <CheckCircle size={12} />
+                                WhatsApp API: Online
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400">
+                                <Shield size={12} />
+                                Sistem Berjalan Normal
+                            </span>
                         </div>
                     </div>
-                )
-            ) : (
-                <>
-                    {ffdState === 'pending' && (
-                        <div className="p-8 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2rem] text-white shadow-2xl shadow-blue-500/20 flex flex-col md:flex-row items-center justify-between gap-8">
-                            <div className="flex items-center gap-6">
-                                <div className="p-5 bg-white/20 rounded-3xl backdrop-blur-md shrink-0">
-                                    <Shield size={40} />
-                                </div>
-                                <div>
-                                    <h2 className="text-2xl font-black uppercase tracking-tighter">Fit For Duty Check-in</h2>
-                                    <p className="text-blue-100 font-medium mt-1">Pastikan kesiapan fisik & mental Anda sebelum memulai shift hari ini.</p>
-                                    <div className="text-[11px] font-black uppercase tracking-wider text-blue-200 bg-white/10 backdrop-blur-md border border-white/20 px-3 py-1.5 rounded-xl w-fit flex items-center gap-1.5 mt-3.5 animate-pulse">
-                                        <span className="relative flex h-2 w-2">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-300 opacity-75"></span>
-                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-100"></span>
-                                        </span>
-                                        K3 Slogan: "{SAFETY_SLOGANS[sloganIndex]}"
-                                    </div>
-                                    {expiredCertifications.length > 0 && (
-                                        <div className="mt-3 flex items-center gap-2 text-xs font-black text-red-200 bg-red-950/40 border border-red-500/30 px-3 py-1.5 rounded-xl w-fit">
-                                            <AlertTriangle size={14} className="text-red-400 fill-red-400 animate-pulse" />
-                                            <span>SIO KEDALUWARSA - AKSES DIBLOKIR</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                            <button
-                                className={`w-full md:w-auto px-10 py-5 rounded-2xl font-black uppercase tracking-widest text-sm shadow-xl shrink-0 transition-all duration-200 ${expiredCertifications.length > 0
-                                    ? 'bg-slate-400 text-slate-200 cursor-not-allowed opacity-50'
-                                    : 'bg-white text-blue-600 hover:bg-blue-50 active:scale-95'
-                                    }`}
-                                onClick={handleStartCheckIn}
-                            >
-                                Mulai Check-in
-                            </button>
-                        </div>
-                    )}
-
-                    {ffdState === 'answering' && (
-                        <div className="bg-white dark:bg-slate-900 border-2 border-blue-500 rounded-[2rem] p-8 shadow-2xl shadow-blue-500/10 animate-in zoom-in-95 duration-200">
-                            <div className="flex justify-between items-start mb-8">
-                                <div>
-                                    <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tighter flex items-center gap-3">
-                                        <Shield size={24} className="text-blue-600" /> Fit For Duty — Kuisioner Harian
-                                    </h2>
-                                    <p className="text-slate-500 text-sm mt-1">Jawab 3 pertanyaan singkat berikut dengan jujur.</p>
-                                </div>
-                                <button onClick={() => setFfdState('pending')} className="p-2 text-slate-400 hover:text-slate-600 transition-colors">
-                                    <X size={18} />
-                                </button>
-                            </div>
-                            <div className="space-y-6">
-                                {FFD_QUESTIONS.map((q, i) => (
-                                    <div key={q.id} className="p-5 bg-slate-50 dark:bg-slate-800 rounded-2xl">
-                                        <p className="font-bold text-slate-800 dark:text-slate-200 mb-4">
-                                            <span className="text-blue-600 font-black mr-2">{i + 1}.</span>{q.text}
-                                        </p>
-                                        <div className="flex gap-3">
-                                            <button
-                                                onClick={() => handleFfdAnswer(q.id, true)}
-                                                className={`flex-1 py-3 rounded-xl font-black text-sm transition-all ${ffdAnswers[q.id] === true ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:border-emerald-400'}`}
-                                            >
-                                                ✓ Ya
-                                            </button>
-                                            <button
-                                                onClick={() => handleFfdAnswer(q.id, false)}
-                                                className={`flex-1 py-3 rounded-xl font-black text-sm transition-all ${ffdAnswers[q.id] === false ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:border-red-400'}`}
-                                            >
-                                                ✗ Tidak
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {ffdState === 'blocked' && (
-                        <div className="p-8 bg-gradient-to-br from-red-600 to-rose-700 rounded-[2rem] text-white text-center shadow-2xl shadow-red-500/30 animate-in zoom-in-95 duration-200">
-                            <div className="text-6xl mb-4">🚫</div>
-                            <h2 className="text-2xl font-black uppercase tracking-tighter">Tidak Layak Kerja (Not Fit for Duty)</h2>
-                            <p className="text-red-100 mt-2 mb-6 font-medium">Anda menjawab "Tidak" pada salah satu pertanyaan. Harap laporkan kondisi Anda ke HSE Officer sebelum memulai aktivitas kerja.</p>
-                            <button
-                                className="w-full md:w-auto px-8 py-4 bg-white text-red-600 hover:bg-red-50 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl active:scale-95 transition-all duration-200"
-                                onClick={() => {
-                                    setFfdState('pending');
-                                    setFfdAnswers({ 1: null, 2: null, 3: null });
-                                    localStorage.removeItem('ffd_status');
-                                    localStorage.removeItem('ffd_date');
-                                }}
-                            >
-                                Ulangi Check-in
-                            </button>
-                        </div>
-                    )}
-
-                    {ffdState === 'passed' && (
-                        <div className="p-5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-4 animate-in slide-in-from-top-4 duration-300">
-                            <div className="p-2 bg-emerald-500 rounded-xl text-white"><CheckCircle size={20} /></div>
+                    {attendance.clockedIn && (
+                        <div className="shrink-0 flex items-center bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/50 p-4 rounded-2xl">
+                            <CheckCircle size={18} className="text-emerald-600 mr-2" />
                             <div>
-                                <p className="font-black text-emerald-700 dark:text-emerald-400 text-sm uppercase tracking-wider">Fit For Duty — Confirmed</p>
-                                <p className="text-xs text-slate-500">Anda dinyatakan layak kerja hari ini. Tetap waspada!</p>
+                                <p className="text-[11px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Absensi Hari Ini</p>
+                                <p className="text-[9px] text-emerald-600 font-medium">Sudah Clock-In — {attendance.fatigue_status || 'OK'}</p>
                             </div>
                         </div>
                     )}
-                </>
+                </div>
             )}
 
             {isFieldRole ? (
@@ -655,7 +493,7 @@ const DashboardPage = () => {
                                         {getGreeting()}, {user?.nama || 'Staff'}!
                                     </h1>
                                     <p className="text-slate-500 dark:text-slate-400 font-semibold mt-1 leading-relaxed">
-                                        Monitor status perizinan kerja, tugas perbaikan (*Corrective Actions*), dan kirimkan laporan keselamatan secara langsung dari lapangan.
+                                        Monitor status perizinan kerja, tugas perbaikan, dan kirimkan laporan keselamatan secara langsung dari lapangan.
                                     </p>
                                 </div>
                                 <div className="flex flex-row sm:flex-col gap-2 shrink-0">
@@ -726,7 +564,7 @@ const DashboardPage = () => {
                                 </div>
                             </div>
                             <p className="text-sm text-red-50 font-medium leading-relaxed">
-                                Laporkan insiden kecelakaan kerja, cedera personel, kerusakan aset properti, atau insiden hampir celaka (*Near Miss*) secara transparan.
+                                Laporkan insiden kecelakaan kerja, cedera personel, kerusakan aset properti, atau insiden hampir celaka secara transparan.
                             </p>
                             <div className="mt-6 flex items-center gap-1.5 text-xs font-black uppercase tracking-wider bg-white/10 w-fit px-4 py-2 rounded-xl">
                                 Laporkan Kejadian <span className="group-hover:translate-x-1 transition-transform inline-block">→</span>
@@ -825,7 +663,7 @@ const DashboardPage = () => {
                                         <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tighter flex items-center gap-2">
                                             <Activity size={20} className="text-blue-500" /> Riwayat Pelaporan Saya
                                         </h3>
-                                        <p className="text-xs text-slate-500 mt-1">Laporan bahaya (*hazard reports*) yang pernah Anda ajukan di lapangan.</p>
+                                        <p className="text-xs text-slate-500 mt-1">Laporan bahaya yang pernah Anda ajukan di lapangan.</p>
                                     </div>
                                     <button
                                         onClick={() => navigate('/hazards')}
@@ -1158,33 +996,43 @@ const DashboardPage = () => {
                             </div>
                         ) : (
                             <div className="p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm animate-in fade-in duration-300">
-                                <h3 className="text-lg font-black mb-5 text-slate-900 dark:text-white uppercase tracking-tighter">Status e-PTW Real-time</h3>
-                                <div className="space-y-3">
-                                    <div className="flex items-center gap-4 p-4 bg-blue-500/10 rounded-2xl border border-blue-500/20">
-                                        <FileText size={18} className="text-blue-500 shrink-0" />
-                                        <span className="flex-1 font-bold text-sm text-blue-700 dark:text-blue-300">PTW Aktif (Disetujui + Berjalan)</span>
-                                        <span className="text-lg font-black text-blue-600 dark:text-blue-400">
+                                <h3 className="text-lg font-black mb-5 text-slate-900 dark:text-white uppercase tracking-tighter">
+                                    {['Admin', 'HSE', 'Supervisor', 'Manager'].includes(user?.role) ? 'Status Izin Kerja (PTW)' : 'Status Izin Kerja (PTW) Saya'}
+                                </h3>
+                                <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                                    <div className="flex items-center justify-between py-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
+                                            <span className="font-semibold text-sm text-slate-700 dark:text-slate-300">Aktif (Berjalan)</span>
+                                        </div>
+                                        <span className="text-base font-black text-slate-900 dark:text-white">
                                             {activePermitsCount}
                                         </span>
                                     </div>
-                                    <div className="flex items-center gap-4 p-4 bg-amber-500/10 rounded-2xl border border-amber-500/20">
-                                        <Clock size={18} className="text-amber-500 shrink-0" />
-                                        <span className="flex-1 font-bold text-sm text-amber-700 dark:text-amber-300">PTW Menunggu Persetujuan</span>
-                                        <span className="text-lg font-black text-amber-600 dark:text-amber-400">
+                                    <div className="flex items-center justify-between py-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+                                            <span className="font-semibold text-sm text-slate-700 dark:text-slate-300">Menunggu Persetujuan</span>
+                                        </div>
+                                        <span className="text-base font-black text-slate-900 dark:text-white">
                                             {permits.filter(p => p.status === 'Pending').length}
                                         </span>
                                     </div>
-                                    <div className="flex items-center gap-4 p-4 bg-slate-500/10 rounded-2xl border border-slate-500/20">
-                                        <CheckCircle size={18} className="text-slate-500 shrink-0" />
-                                        <span className="flex-1 font-bold text-sm text-slate-700 dark:text-slate-300">PTW Selesai / Closed</span>
-                                        <span className="text-lg font-black text-slate-600 dark:text-slate-400">
+                                    <div className="flex items-center justify-between py-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                                            <span className="font-semibold text-sm text-slate-700 dark:text-slate-300">Selesai / Closed</span>
+                                        </div>
+                                        <span className="text-base font-black text-slate-900 dark:text-white">
                                             {permits.filter(p => p.status === 'Closed').length}
                                         </span>
                                     </div>
-                                    <div className="flex items-center gap-4 p-4 bg-amber-500/10 rounded-2xl border border-amber-500/20">
-                                        <AlertCircle size={18} className="text-amber-500 shrink-0" />
-                                        <span className="flex-1 font-bold text-sm text-amber-700 dark:text-amber-300">Tindakan CAPA Tertunda</span>
-                                        <span className="text-lg font-black text-amber-600 dark:text-amber-400">
+                                    <div className="flex items-center justify-between py-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+                                            <span className="font-semibold text-sm text-slate-700 dark:text-slate-300">Tindakan CAPA Tertunda</span>
+                                        </div>
+                                        <span className="text-base font-black text-slate-900 dark:text-white">
                                             {stats.pendingActions}
                                         </span>
                                     </div>

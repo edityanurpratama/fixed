@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const Voucher = require('../models/Voucher');
+const HazardReport = require('../models/HazardReport');
 const { recordLog } = require('./logController');
 
 const register = async (req, res) => {
@@ -200,10 +201,22 @@ const redeemPoints = async (req, res) => {
         if (!user) {
             return res.status(404).json({ message: 'User tidak ditemukan' });
         }
-        if (user.points < points) {
-            return res.status(400).json({ message: 'Poin tidak mencukupi' });
+        const REWARDS_CONFIG = [
+            { id: 1, title: 'Voucer Makan Siang', points: 200, quota: 50 },
+            { id: 2, title: 'Voucer Belanja Rp50K', points: 500, quota: 30 },
+            { id: 3, title: 'Hari Libur Tambahan', points: 1000, quota: 5 },
+            { id: 4, title: 'Merchandise K3 Premium', points: 750, quota: 15 },
+        ];
+        const rewardConfig = REWARDS_CONFIG.find(r => r.id === Number(rewardId));
+        if (rewardConfig) {
+            const count = await Voucher.count({
+                where: { reward_id: rewardId }
+            });
+            if (count >= rewardConfig.quota) {
+                return res.status(400).json({ message: 'Kuota penukaran untuk hadiah ini sudah habis!' });
+            }
         }
-        
+
         user.points -= points;
         await user.save();
 
@@ -229,6 +242,64 @@ const redeemPoints = async (req, res) => {
     }
 };
 
-module.exports = { register, login, getMe, forgotPassword, resetPassword, updateProfile, changePassword, redeemPoints };
+const getLeaderboard = async (req, res) => {
+    try {
+        const users = await User.findAll({
+            attributes: ['id_user', 'nama', 'role', 'points'],
+            order: [['points', 'DESC']]
+        });
+        
+        const leaderboardData = [];
+        for (const u of users) {
+            const reportsCount = await HazardReport.count({
+                where: {
+                    id_user: u.id_user,
+                    is_verified: true
+                }
+            });
+            leaderboardData.push({
+                name: u.nama,
+                dept: u.role,
+                points: u.points,
+                reports: reportsCount,
+                badge: u.points > 1000 ? 'Safety Champion' : u.points > 500 ? 'Hazard Hunter' : ''
+            });
+        }
+        
+        leaderboardData.sort((a, b) => b.points - a.points);
+        res.json(leaderboardData);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const getRewards = async (req, res) => {
+    try {
+        const REWARDS_CONFIG = [
+            { id: 1, title: 'Voucer Makan Siang', points: 200, icon: '🍱', quota: 50 },
+            { id: 2, title: 'Voucer Belanja Rp50K', points: 500, icon: '🛒', quota: 30 },
+            { id: 3, title: 'Hari Libur Tambahan', points: 1000, icon: '🏖️', quota: 5 },
+            { id: 4, title: 'Merchandise K3 Premium', points: 750, icon: '🎁', quota: 15 },
+        ];
+
+        const rewardsWithRemaining = [];
+        for (const reward of REWARDS_CONFIG) {
+            const count = await Voucher.count({
+                where: { reward_id: reward.id }
+            });
+            const remaining = Math.max(0, reward.quota - count);
+            rewardsWithRemaining.push({
+                ...reward,
+                remaining,
+                available: remaining > 0
+            });
+        }
+        res.json(rewardsWithRemaining);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+module.exports = { register, login, getMe, forgotPassword, resetPassword, updateProfile, changePassword, redeemPoints, getLeaderboard, getRewards };
 
 

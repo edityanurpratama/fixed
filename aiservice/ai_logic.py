@@ -9,38 +9,73 @@ RISK_LEVELS: Dict[str, int] = {
 
 KEYWORD_RISKS: Dict[str, str] = {
     "fire": "Critical",
+    "kebakaran": "Critical",
     "smoke": "Critical",
+    "asap": "Critical",
     "explosion": "Critical",
+    "ledakan": "Critical",
     "chemical": "Critical",
+    "kimia": "Critical",
     "gas leak": "Critical",
+    "bocor gas": "Critical",
+    "bocoran gas": "Critical",
     "leak": "High",
+    "bocor": "High",
     "spill": "High",
+    "tumpahan": "High",
+    "tumpah": "High",
     "electric": "High",
+    "listrik": "High",
     "arc flash": "High",
+    "korsleting": "High",
     "sparks": "High",
+    "percikan": "High",
     "broken": "High",
+    "rusak": "High",
+    "patah": "High",
     "cable": "Medium",
+    "kabel": "Medium",
     "slippery": "Medium",
+    "licin": "Medium",
     "wet floor": "Medium",
+    "lantai basah": "Medium",
     "trip": "Medium",
+    "tersandung": "Medium",
     "obstruction": "Medium",
+    "halangan": "Medium",
     "dust": "Low",
+    "debu": "Low",
     "noise": "Low",
+    "bising": "Low",
+    "suara": "Low",
     "vibration": "Low",
+    "getaran": "Low",
     "fatigue": "Low",
+    "lelah": "Low",
+    "capek": "Low",
     "heat": "Low",
+    "panas": "Low",
     "cold": "Low",
+    "dingin": "Low",
 }
 
 LOCATION_RISKS: Dict[str, str] = {
     "boiler": "High",
     "electrical": "High",
+    "panel": "High",
+    "listrik": "High",
     "transformer": "High",
+    "trafo": "High",
     "storage": "Medium",
+    "gudang": "Medium",
     "pipeline": "High",
+    "pipa": "High",
     "tank": "High",
+    "tangki": "High",
     "confined space": "Critical",
+    "ruang terbatas": "Critical",
     "reactor": "Critical",
+    "reaktor": "Critical",
 }
 
 RECOMMENDATIONS: Dict[str, str] = {
@@ -98,4 +133,30 @@ def predict_risk(description: str, location: str) -> Dict[str, object]:
         "predicted_risk": predicted_risk,
         "confidence": confidence,
         "recommendation": RECOMMENDATIONS.get(predicted_risk, "Lakukan tinjauan manual dan pastikan kontrol risiko.")
+    }
+
+def predict_fatigue(sleep_hours: float, stress_level: float) -> Dict[str, object]:
+    """
+    Rule-based Heuristic AI based on WellGuard EDA insights:
+    - Sleep < 5 AND Stress > 7 => Critical (Tinggi)
+    - Sleep < 6 OR Stress >= 6 => Medium (Sedang)
+    - Sleep >= 7 AND Stress <= 5 => Low (Rendah)
+    """
+    if sleep_hours < 5.0 and stress_level > 7.0:
+        fatigue_status = "Tinggi"
+        recommendation = "🚨 Risiko Tinggi: Segera konsultasikan ke tim kesehatan kerja. Kurangi beban kerja."
+    elif sleep_hours < 6.0 or stress_level >= 6.0:
+        fatigue_status = "Sedang"
+        recommendation = "⚠️ Perlu Perhatian: Tingkatkan kualitas tidur dan lakukan teknik relaksasi."
+    elif sleep_hours >= 7.0 and stress_level <= 5.0:
+        fatigue_status = "Rendah"
+        recommendation = "✅ Kondisi Baik: Pertahankan pola tidur 7–8 jam dan jaga stress di level rendah."
+    else:
+        # Default middle ground
+        fatigue_status = "Sedang"
+        recommendation = "⚠️ Perlu Perhatian: Tetap pantau pola tidur dan tingkat stres."
+
+    return {
+        "fatigue_status": fatigue_status,
+        "recommendation": recommendation
     }

@@ -3,6 +3,7 @@ import api from '../api/axios';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import { ClipboardCheck, Calendar, QrCode, CheckSquare, AlertTriangle, Camera, X } from 'lucide-react';
+import { Html5Qrcode } from 'html5-qrcode';
 
 const CHECKLIST_TEMPLATES = {
     'APAR': ['Tabung tidak berkarat', 'Segel dalam kondisi baik', 'Penunjuk tekanan pada posisi hijau', 'Label inspeksi terbaru', 'Akses tidak terhalang'],
@@ -26,6 +27,55 @@ const AuditPage = () => {
     useEffect(() => {
         fetchAudits();
     }, []);
+
+    useEffect(() => {
+        let html5QrcodeScanner;
+        
+        if (showQrModal) {
+            const timer = setTimeout(() => {
+                const scannerElement = document.getElementById("reader");
+                if (scannerElement) {
+                    html5QrcodeScanner = new Html5Qrcode("reader");
+                    
+                    const qrCodeSuccessCallback = (decodedText) => {
+                        setQrValue(decodedText);
+                        setFormData(prev => ({ ...prev, qr_code_asset: decodedText }));
+                        setShowQrModal(false);
+                        setShowForm(true); // Open the audit checklist form immediately
+                        
+                        if (html5QrcodeScanner.isScanning) {
+                            html5QrcodeScanner.stop().catch(err => console.error("Error stopping scanner:", err));
+                        }
+                    };
+
+                    const qrCodeErrorCallback = () => {
+                        // Ignore scan frame errors
+                    };
+
+                    const config = { 
+                        fps: 10, 
+                        qrbox: { width: 220, height: 220 } 
+                    };
+
+                    html5QrcodeScanner.start(
+                        { facingMode: "environment" }, 
+                        config, 
+                        qrCodeSuccessCallback, 
+                        qrCodeErrorCallback
+                    ).catch(err => {
+                        console.warn("Gagal memulai scanner QR:", err);
+                    });
+                }
+            }, 300);
+
+            return () => {
+                clearTimeout(timer);
+                if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
+                    html5QrcodeScanner.stop().catch(err => console.error("Error stopping scanner:", err));
+                }
+            };
+        }
+    }, [showQrModal]);
 
     useEffect(() => {
         // Reset checklist when template changes
@@ -110,14 +160,23 @@ const AuditPage = () => {
                             <QrCode size={36} />
                         </div>
                         <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">Pindai QR Code Aset</h3>
-                        <p className="text-slate-500 text-sm mb-6">Fitur ini membutuhkan akses kamera perangkat mobile. Gunakan simulasi di bawah untuk demo.</p>
-                        <div className="p-4 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl mb-6 flex flex-col items-center gap-3">
-                            <Camera size={32} className="text-slate-300" />
-                            <span className="text-xs text-slate-400 font-bold">Area Kamera (Mobile Only)</span>
+                        <p className="text-slate-500 text-sm mb-6">Arahkan kamera belakang ke stiker QR Code aset K3 Anda.</p>
+                        
+                        {/* Live video scanner stream wrapper */}
+                        <div className="overflow-hidden rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 mb-6 bg-slate-950 aspect-square flex items-center justify-center relative">
+                            <div id="reader" className="w-full h-full" />
+                            {/* Target frame indicator */}
+                            <div className="absolute w-48 h-48 border-2 border-blue-500 rounded-2xl pointer-events-none z-10 flex items-center justify-center">
+                                <div className="absolute w-4 h-4 border-t-4 border-l-4 border-blue-500 -top-1 -left-1 rounded-tl-md"></div>
+                                <div className="absolute w-4 h-4 border-t-4 border-r-4 border-blue-500 -top-1 -right-1 rounded-tr-md"></div>
+                                <div className="absolute w-4 h-4 border-b-4 border-l-4 border-blue-500 -bottom-1 -left-1 rounded-bl-md"></div>
+                                <div className="absolute w-4 h-4 border-b-4 border-r-4 border-blue-500 -bottom-1 -right-1 rounded-br-md"></div>
+                            </div>
                         </div>
+                        
                         <div className="flex gap-3">
-                            <Button variant="ghost" className="flex-1 rounded-2xl" onClick={() => setShowQrModal(false)}>Batal</Button>
-                            <Button className="flex-1 rounded-2xl" onClick={handleSimulateQR}>Simulasi Pindai</Button>
+                            <Button variant="ghost" className="flex-1 rounded-2xl text-xs py-3" onClick={() => setShowQrModal(false)}>Batal</Button>
+                            <Button variant="secondary" className="flex-1 rounded-2xl text-xs py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700" onClick={handleSimulateQR}>Simulasi Scan</Button>
                         </div>
                     </div>
                 </div>

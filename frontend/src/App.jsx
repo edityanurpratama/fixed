@@ -23,6 +23,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import GamificationPage from './pages/GamificationPage';
 import AuditLogPage from './pages/AuditLogPage';
+import AttendancePage from './pages/AttendancePage';
 
 const queryClient = new QueryClient();
 
@@ -282,6 +283,13 @@ function App() {
                             <ProtectedRoute>
                                 <DashboardLayout>
                                     <GamificationPage />
+                                </DashboardLayout>
+                            </ProtectedRoute>
+                        } />
+                        <Route path="/attendance" element={
+                            <ProtectedRoute>
+                                <DashboardLayout>
+                                    <AttendancePage />
                                 </DashboardLayout>
                             </ProtectedRoute>
                         } />

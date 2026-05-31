@@ -16,6 +16,9 @@ const WorkPermit = require('./models/WorkPermit');
 const Voucher = require('./models/Voucher');
 const AuditLog = require('./models/AuditLog');
 const SystemConfig = require('./models/SystemConfig');
+const FatigueLog = require('./models/FatigueLog');
+const Attendance = require('./models/Attendance');
+const LeaveRequest = require('./models/LeaveRequest');
 const { autoExpirePermits } = require('./controllers/workPermitController');
 const whatsappService = require('./services/whatsappService');
 
@@ -75,6 +78,8 @@ app.use('/api/vouchers', require('./routes/voucherRoutes'));
 app.use('/api/logs', require('./routes/logRoutes'));
 app.use('/api/config', require('./routes/configRoutes'));
 app.use('/api/wa', require('./routes/whatsappRoutes'));
+app.use('/api/fatigue', require('./routes/fatigueRoutes'));
+app.use('/api/attendance', require('./routes/attendanceRoutes'));
 
 
 app.get('/', (req, res) => {

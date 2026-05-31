@@ -27,14 +27,49 @@ const GamificationPage = () => {
     const [showVouchersDrawer, setShowVouchersDrawer] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
 
+    // Fetch real leaderboard and rewards from backend
+    const [leaderboard, setLeaderboard] = useState([]);
+    const [rewards, setRewards] = useState([]);
+    const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+    const [rewardsLoading, setRewardsLoading] = useState(false);
+
     const myPoints = user?.points || 0;
     const isHseOrAdmin = user?.role === 'HSE' || user?.role === 'Admin';
+
+    useEffect(() => {
+        fetchLeaderboard();
+        fetchRewards();
+    }, []);
 
     useEffect(() => {
         if (showVouchersDrawer) {
             fetchVouchers();
         }
     }, [showVouchersDrawer]);
+
+    const fetchLeaderboard = async () => {
+        setLeaderboardLoading(true);
+        try {
+            const res = await api.get('/auth/leaderboard');
+            setLeaderboard(res.data);
+        } catch (err) {
+            console.error('Failed to fetch leaderboard:', err);
+        } finally {
+            setLeaderboardLoading(false);
+        }
+    };
+
+    const fetchRewards = async () => {
+        setRewardsLoading(true);
+        try {
+            const res = await api.get('/auth/rewards');
+            setRewards(res.data);
+        } catch (err) {
+            console.error('Failed to fetch rewards:', err);
+        } finally {
+            setRewardsLoading(false);
+        }
+    };
 
     const fetchVouchers = async () => {
         try {
@@ -56,6 +91,8 @@ const GamificationPage = () => {
             });
             updateUser({ ...user, points: res.data.points });
             alert(`Berhasil menukarkan poin dengan: ${reward.title}!\nKode Voucher Anda: ${res.data.voucher.code}\n\nSilakan tunjukkan kode voucher di menu 'Voucher Saya' ke HSE Officer.`);
+            fetchRewards(); // Update quotas
+            fetchLeaderboard(); // Update positions
             setShowRewards(false);
         } catch (err) {
             console.error(err);
@@ -77,19 +114,20 @@ const GamificationPage = () => {
         }
     };
 
-    const userInLeaderboard = {
-        name: user?.nama || 'Anda',
-        dept: user?.role || 'Safety Team',
-        points: myPoints,
-        reports: 0,
-        badge: myPoints > 1000 ? 'Safety Champion' : myPoints > 500 ? 'Hazard Hunter' : ''
-    };
+    const sortedLeaderboard = leaderboard.length > 0
+        ? leaderboard.map((u, index) => ({ ...u, rank: index + 1 }))
+        : [
+            {
+                name: user?.nama || 'Anda',
+                dept: user?.role || 'Safety Team',
+                points: myPoints,
+                reports: 0,
+                badge: myPoints > 1000 ? 'Safety Champion' : myPoints > 500 ? 'Hazard Hunter' : '',
+                rank: 1
+            }
+          ];
 
-    const sortedLeaderboard = [...baseLeaderboard.filter(u => u.name !== user?.nama), userInLeaderboard]
-        .sort((a, b) => b.points - a.points)
-        .map((u, index) => ({ ...u, rank: index + 1 }));
-
-    const myRank = sortedLeaderboard.find(u => u.name === user?.nama)?.rank || 5;
+    const myRank = sortedLeaderboard.find(u => u.name === user?.nama)?.rank || 1;
 
     const filteredVouchers = vouchers.filter(v => {
         const search = searchTerm.toLowerCase();
@@ -215,19 +253,29 @@ const GamificationPage = () => {
                             </div>
                         </div>
                         <div className="space-y-3 mb-6">
-                            {REWARDS.map(r => (
-                                <div key={r.id} className={`flex items-center gap-4 p-4 rounded-2xl border transition-all ${r.available && myPoints >= r.points ? 'border-slate-200 dark:border-slate-700 hover:border-amber-400 cursor-pointer' : 'border-slate-100 dark:border-slate-800 opacity-50 cursor-not-allowed'}`}>
-                                    <div className="text-3xl">{r.icon}</div>
-                                    <div className="flex-1">
-                                        <p className="font-bold text-slate-900 dark:text-white text-sm">{r.title}</p>
-                                        <p className="text-[10px] text-amber-600 font-black">{r.points} Poin</p>
+                            {(rewards.length > 0 ? rewards : REWARDS).map(r => {
+                                const hasQuotaInfo = r.remaining !== undefined;
+                                return (
+                                    <div key={r.id} className={`flex items-center gap-4 p-4 rounded-2xl border transition-all ${r.available && myPoints >= r.points ? 'border-slate-200 dark:border-slate-700 hover:border-amber-400 cursor-pointer' : 'border-slate-100 dark:border-slate-800 opacity-50 cursor-not-allowed'}`}>
+                                        <div className="text-3xl">{r.icon}</div>
+                                        <div className="flex-1">
+                                            <p className="font-bold text-slate-900 dark:text-white text-sm">{r.title}</p>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                                <span className="text-[10px] text-amber-600 font-black">{r.points} Poin</span>
+                                                {hasQuotaInfo && (
+                                                    <span className={`text-[9px] px-2 py-0.5 rounded-lg font-bold ${r.remaining > 0 ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' : 'bg-red-500/10 text-red-500'}`}>
+                                                        Kuota: {r.remaining} sisa
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {myPoints >= r.points && r.available
+                                            ? <Button className="text-xs rounded-xl py-2 px-3" onClick={() => handleRedeem(r)} loading={loading}>Tukar</Button>
+                                            : <span className="text-[10px] text-slate-400 font-bold">{myPoints < r.points ? 'Poin kurang' : 'Habis'}</span>
+                                        }
                                     </div>
-                                    {myPoints >= r.points && r.available
-                                        ? <Button className="text-xs rounded-xl py-2 px-3" onClick={() => handleRedeem(r)} loading={loading}>Tukar</Button>
-                                        : <span className="text-[10px] text-slate-400 font-bold">{myPoints < r.points ? 'Poin kurang' : 'Habis'}</span>
-                                    }
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                         <Button variant="ghost" className="w-full rounded-2xl" onClick={() => setShowRewards(false)}>Tutup</Button>
                     </div>
