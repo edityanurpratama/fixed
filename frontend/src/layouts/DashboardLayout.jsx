@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import { Menu, Shield, Bell, AlertTriangle, FileText, CheckCircle, Sun, Moon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../store/AuthContext';
 import { useTheme } from '../store/ThemeContext';
+import { useSocket } from '../hooks/useSocket';
 import api from '../api/axios';
 
-const compileNotifications = (permits, hazards, actions, activeUser) => {
+const compileNotifications = (permits, hazards, actions, leaves, activeUser) => {
     if (!activeUser) return [];
     const compiled = [];
     const userRole = activeUser.role;
@@ -18,6 +19,20 @@ const compileNotifications = (permits, hazards, actions, activeUser) => {
         const isOwner = p.id_user === userId;
 
         if (p.status === 'Pending') {
+            if (isOwner && p.approval_step > 1) {
+                const stepMessage = p.approval_step === 2
+                    ? 'Disetujui Supervisor, menunggu persetujuan HSE.'
+                    : 'Disetujui HSE, menunggu persetujuan Manager.';
+                compiled.push({
+                    id: permitId,
+                    type: 'permit',
+                    title: 'Progress e-PTW Diperbarui',
+                    message: `e-PTW #${p.id_permit}: ${stepMessage}`,
+                    time: new Date(p.updatedAt || p.createdAt),
+                    link: '/permits'
+                });
+            }
+
             // Approver notifications
             if (userRole === 'Supervisor' && p.approval_step === 1) {
                 compiled.push({
@@ -68,6 +83,35 @@ const compileNotifications = (permits, hazards, actions, activeUser) => {
                     link: '/permits'
                 });
             }
+        }
+    });
+
+    // 2. Leave Notifications
+    leaves.forEach(l => {
+        const leaveId = `leave-${l.id_leave}-${l.updatedAt || l.createdAt}`;
+        const isOwner = l.id_user === userId;
+        const requesterName = l.User?.nama || l.userName || 'Pekerja';
+
+        if (l.status === 'Pending') {
+            if (userRole === 'Admin') {
+                compiled.push({
+                    id: leaveId,
+                    type: 'leave',
+                    title: 'Persetujuan Cuti/Izin Baru',
+                    message: `${requesterName} mengajukan ${l.type} untuk ${l.start_date} s/d ${l.end_date}.`,
+                    time: new Date(l.createdAt),
+                    link: '/attendance'
+                });
+            }
+        } else if (isOwner) {
+            compiled.push({
+                id: leaveId,
+                type: 'leave',
+                title: 'Status Cuti/Izin Diperbarui',
+                message: `Pengajuan ${l.type} Anda telah ${l.status === 'Approved' ? 'disetujui' : 'ditolak'}.`,
+                time: new Date(l.updatedAt || l.createdAt),
+                link: '/attendance'
+            });
         }
     });
 
@@ -123,6 +167,7 @@ const compileNotifications = (permits, hazards, actions, activeUser) => {
 const DashboardLayout = ({ children }) => {
     const { user } = useAuth();
     const { theme, toggleTheme } = useTheme();
+    const { socket } = useSocket();
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [isNotifOpen, setNotifOpen] = useState(false);
@@ -135,33 +180,60 @@ const DashboardLayout = ({ children }) => {
 
     useEffect(() => {
         if (!user) return;
+        const userId = user.id_user || user.id;
+        setReadNotifIds(JSON.parse(localStorage.getItem(`read_notifications_${userId}`) || '[]'));
+    }, [user]);
 
-        const fetchData = async () => {
-            try {
-                const [permitsRes, hazardsRes, actionsRes] = await Promise.all([
-                    api.get('/permits').catch(() => ({ data: [] })),
-                    api.get('/hazards').catch(() => ({ data: [] })),
-                    api.get('/actions').catch(() => ({ data: [] }))
-                ]);
+    const fetchNotifications = useCallback(async () => {
+        if (!user) return;
+        try {
+            const canReviewLeaves = user.role === 'Admin';
+            const leaveEndpoint = canReviewLeaves ? '/attendance/all' : '/attendance/my-history';
+            const [permitsRes, hazardsRes, actionsRes, attendanceRes] = await Promise.all([
+                api.get('/permits').catch(() => ({ data: [] })),
+                api.get('/hazards').catch(() => ({ data: [] })),
+                api.get('/actions').catch(() => ({ data: [] })),
+                api.get(leaveEndpoint).catch(() => ({ data: { leaves: [] } }))
+            ]);
 
-                // Compile notifications
-                const compiled = compileNotifications(
-                    permitsRes.data || [],
-                    hazardsRes.data || [],
-                    actionsRes.data || [],
-                    user
-                );
-                setNotifications(compiled);
-            } catch (error) {
-                console.error('[DashboardLayout] Error fetching notifications:', error);
-            }
-        };
+            const compiled = compileNotifications(
+                permitsRes.data || [],
+                hazardsRes.data || [],
+                actionsRes.data || [],
+                attendanceRes.data?.leaves || [],
+                user
+            );
+            setNotifications(compiled);
+        } catch (error) {
+            console.error('[DashboardLayout] Error fetching notifications:', error);
+        }
+    }, [user]);
 
-        fetchData();
-        const interval = setInterval(fetchData, 10000); // Poll every 10 seconds
+    useEffect(() => {
+        if (!user) return;
+
+        fetchNotifications();
+        const interval = setInterval(fetchNotifications, 10000); // Poll every 10 seconds
 
         return () => clearInterval(interval);
-    }, [user]);
+    }, [fetchNotifications, user]);
+
+    useEffect(() => {
+        if (!socket || !user) return;
+
+        const refresh = () => fetchNotifications();
+        socket.on('NEW_LEAVE_REQUEST', refresh);
+        socket.on('LEAVE_REQUEST_UPDATE', refresh);
+        socket.on('PTW_REQUEST_CREATED', refresh);
+        socket.on('PTW_STATUS_UPDATE', refresh);
+
+        return () => {
+            socket.off('NEW_LEAVE_REQUEST', refresh);
+            socket.off('LEAVE_REQUEST_UPDATE', refresh);
+            socket.off('PTW_REQUEST_CREATED', refresh);
+            socket.off('PTW_STATUS_UPDATE', refresh);
+        };
+    }, [fetchNotifications, socket, user]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -343,4 +415,3 @@ const DashboardLayout = ({ children }) => {
 };
 
 export default DashboardLayout;
-

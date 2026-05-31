@@ -185,15 +185,14 @@ exports.submitLeave = async (req, res) => {
 
         // ━━━ Notifikasi ke Admin/Supervisor/Manager ━━━
         try {
-            // Fetch all admins & supervisors
-            const admins = await User.findAll({
+            const approvers = await User.findAll({
                 where: {
-                    role: ['Admin', 'Supervisor', 'Manager', 'HSE']
+                    role: 'Admin'
                 },
                 attributes: ['id_user', 'nama', 'no_whatsapp', 'role']
             });
 
-            if (admins && admins.length > 0) {
+            if (approvers && approvers.length > 0) {
                 // Send WhatsApp to each admin
                 const typeLabel = type === 'Izin' ? 'Izin' : (type === 'Cuti' ? 'Cuti' : 'Sakit');
                 const waMessage = `*[Nuraga] Pengajuan ${typeLabel} Baru*\n\n` +
@@ -203,16 +202,17 @@ exports.submitLeave = async (req, res) => {
                     `Alasan: ${reason}\n\n` +
                     `Silakan buka aplikasi untuk menyetujui/menolak.`;
 
-                for (const admin of admins) {
-                    if (admin.no_whatsapp) {
+                setImmediate(() => {
+                    approvers.forEach(async (approver) => {
+                        if (!approver.no_whatsapp) return;
                         try {
-                            await wa.sendMessage(admin.no_whatsapp, waMessage);
-                            console.log(`[WhatsApp] Notifikasi pengajuan ${typeLabel} dikirim ke Admin: ${admin.nama}`);
+                            await wa.sendMessage(approver.no_whatsapp, waMessage);
+                            console.log(`[WhatsApp] Notifikasi pengajuan ${typeLabel} dikirim ke approver: ${approver.nama}`);
                         } catch (waErr) {
-                            console.error(`[WhatsApp] Gagal ke ${admin.nama}:`, waErr.message);
+                            console.error(`[WhatsApp] Gagal ke ${approver.nama}:`, waErr.message);
                         }
-                    }
-                }
+                    });
+                });
 
                 // Emit WebSocket to all connected admins
                 if (io) {
@@ -262,23 +262,24 @@ exports.approveLeave = async (req, res) => {
         await leave.save();
 
         // ━━━ Notifikasi ke User via WhatsApp ━━━
+        const statusLabel = status === 'Approved' ? 'Disetujui ✅' : 'Ditolak ❌';
+        const typeLabel = leave.type === 'Izin' ? 'Izin' : (leave.type === 'Cuti' ? 'Cuti' : 'Sakit');
+        const waMessage = `*[Nuraga] Notifikasi ${typeLabel}*\n\n` +
+            `Status: *${statusLabel}*\n` +
+            `Tipe: ${typeLabel}\n` +
+            `Periode: ${leave.start_date} s/d ${leave.end_date}\n` +
+            `Alasan: ${leave.reason}\n\n` +
+            `Silakan buka aplikasi untuk melihat detail lebih lanjut.`;
+
         if (leave.User && leave.User.no_whatsapp) {
-            try {
-                const statusLabel = status === 'Approved' ? 'Disetujui ✅' : 'Ditolak ❌';
-                const typeLabel = leave.type === 'Izin' ? 'Izin' : (leave.type === 'Cuti' ? 'Cuti' : 'Sakit');
-                const waMessage = `*[Nuraga] Notifikasi ${typeLabel}*\n\n` +
-                    `Status: *${statusLabel}*\n` +
-                    `Tipe: ${typeLabel}\n` +
-                    `Periode: ${leave.start_date} s/d ${leave.end_date}\n` +
-                    `Alasan: ${leave.reason}\n\n` +
-                    `Silakan buka aplikasi untuk melihat detail lebih lanjut.`;
-                
-                await wa.sendMessage(leave.User.no_whatsapp, waMessage);
-                console.log(`[WhatsApp] Notifikasi ${typeLabel} ${status} dikirim ke ${leave.User.nama}`);
-            } catch (waErr) {
-                console.error('[WhatsApp] Gagal mengirim notifikasi:', waErr.message);
-                // Continue even if WhatsApp fails
-            }
+            setImmediate(async () => {
+                try {
+                    await wa.sendMessage(leave.User.no_whatsapp, waMessage);
+                    console.log(`[WhatsApp] Notifikasi ${typeLabel} ${status} dikirim ke ${leave.User.nama}`);
+                } catch (waErr) {
+                    console.error('[WhatsApp] Gagal mengirim notifikasi:', waErr.message);
+                }
+            });
         }
 
         // ━━━ Emit WebSocket notification ke User ━━━
@@ -291,6 +292,7 @@ exports.approveLeave = async (req, res) => {
                 userName: leave.User ? leave.User.nama : 'Pekerja',
                 start_date: leave.start_date,
                 end_date: leave.end_date,
+                updatedAt: leave.updatedAt,
                 message: `Pengajuan ${leave.type} Anda telah ${status === 'Approved' ? 'Disetujui ✅' : 'Ditolak ❌'}`
             });
             console.log(`[WebSocket] Event LEAVE_REQUEST_UPDATE dipancarkan untuk user ${leave.id_user}`);

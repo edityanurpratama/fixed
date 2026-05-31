@@ -117,24 +117,31 @@ const triggerEmergency = async (req, res) => {
             });
         }
 
-        // WA: blast to all HSE / Admin / Manager
-        try {
+        const notifyEmergencyContacts = async () => {
             const responderNames = finalResponders.map(r => `• ${r.nama} (${r.role})`).join('\n') || '• Belum ada responder ditemukan';
-            const waMessage =
+            const broadcastMessage =
                 `🚨 *[NURAGA SAFETY — DARURAT SOS!]*\n\n` +
                 `⚠️ Jenis Kejadian: *${jenis_kejadian}*\n` +
                 `📍 Lokasi: *${victimZone}*\n` +
                 `👤 Pelapor: *${victimName || 'Tidak diketahui'}*\n` +
                 `🕐 Waktu: ${new Date().toLocaleString('id-ID')}\n\n` +
                 `👷 Responder yang Diarahkan:\n${responderNames}\n\n` +
-                `Segera lakukan koordinasi respons darurat!`;
+                `Tetap waspada, ikuti instruksi HSE, dan beri akses untuk tim responder.`;
 
-            const hsePics = await User.findAll({ where: { role: { [Op.in]: ['HSE', 'Admin', 'Manager'] } } });
-            console.log('[Emergency] HSE/Admin/Manager candidates:', hsePics.map(u => ({ id: u.id_user, nama: u.nama, no_whatsapp: !!u.no_whatsapp })));
-            for (const u of hsePics) {
+            const allUsers = await User.findAll({
+                attributes: ['id_user', 'nama', 'role', 'no_whatsapp'],
+                where: {
+                    no_whatsapp: {
+                        [Op.ne]: null
+                    }
+                }
+            });
+
+            console.log('[Emergency] WhatsApp broadcast candidates:', allUsers.map(u => ({ id: u.id_user, nama: u.nama, role: u.role, no_whatsapp: !!u.no_whatsapp })));
+            for (const u of allUsers) {
                 if (u.no_whatsapp) {
                     try {
-                        await wa.sendMessage(u.no_whatsapp, waMessage);
+                        await wa.sendMessage(u.no_whatsapp, broadcastMessage);
                     } catch (err) {
                         console.error(`[WhatsApp] Failed to notify ${u.nama}:`, err.message);
                     }
@@ -164,17 +171,21 @@ const triggerEmergency = async (req, res) => {
                     console.error('[WhatsApp] Error notifying responder:', err.message);
                 }
             }
-        } catch (waErr) {
-            console.error('[WhatsApp] Emergency notification failed:', waErr.message);
-        }
+        };
 
         res.status(201).json({
-            message: 'Darurat dipicu dan personil bersertifikat telah diberitahu',
+            message: 'Darurat dipicu dan notifikasi personil sedang dikirim',
             emergency: {
                 ...emergency.toJSON(),
                 reporter_name: victimName
             },
             responders: finalResponders
+        });
+
+        setImmediate(() => {
+            notifyEmergencyContacts().catch((waErr) => {
+                console.error('[WhatsApp] Emergency notification failed:', waErr.message);
+            });
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -222,8 +233,7 @@ const resolveEmergency = async (req, res) => {
             });
         }
 
-        // Send WhatsApp broadcast
-        try {
+        const notifyResolvedContacts = async () => {
             const waMessage = 
                 `✅ *[NURAGA SAFETY — STATUS AMAN]*\n\n` +
                 `Peringatan Darurat untuk kejadian *${emergency.jenis_kejadian}* di *${emergency.lokasi}* telah dicabut.\n\n` +
@@ -231,9 +241,17 @@ const resolveEmergency = async (req, res) => {
                 `Waktu Selesai: ${new Date().toLocaleString('id-ID')}\n\n` +
                 `Seluruh staf dapat kembali beraktivitas normal.`;
 
-            const hsePics = await User.findAll({ where: { role: { [Op.in]: ['HSE', 'Admin', 'Manager'] } } });
-            console.log('[Emergency][Resolve] HSE/Admin/Manager candidates:', hsePics.map(u => ({ id: u.id_user, nama: u.nama, no_whatsapp: !!u.no_whatsapp })));
-            for (const u of hsePics) {
+            const allUsers = await User.findAll({
+                attributes: ['id_user', 'nama', 'role', 'no_whatsapp'],
+                where: {
+                    no_whatsapp: {
+                        [Op.ne]: null
+                    }
+                }
+            });
+
+            console.log('[Emergency][Resolve] WhatsApp broadcast candidates:', allUsers.map(u => ({ id: u.id_user, nama: u.nama, role: u.role, no_whatsapp: !!u.no_whatsapp })));
+            for (const u of allUsers) {
                 if (u.no_whatsapp) {
                     try {
                         await wa.sendMessage(u.no_whatsapp, waMessage);
@@ -244,11 +262,15 @@ const resolveEmergency = async (req, res) => {
                     console.warn(`[WhatsApp] Skipping ${u.nama} on resolve — no_whatsapp not set`);
                 }
             }
-        } catch (waErr) {
-            console.error('[WhatsApp] Resolve notification failed:', waErr.message);
-        }
+        };
 
         res.json({ message: 'Status darurat berhasil dicabut (kondusif).', emergency });
+
+        setImmediate(() => {
+            notifyResolvedContacts().catch((waErr) => {
+                console.error('[WhatsApp] Resolve notification failed:', waErr.message);
+            });
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

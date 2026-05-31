@@ -47,10 +47,6 @@ const EmergencyListener = () => {
     useEffect(() => {
         if (!user || !socket) return;
 
-        // Safety override: alert Safety roles
-        const isSafetyStaff = ['Admin', 'HSE', 'Supervisor', 'Manager'].includes(user.role);
-        if (!isSafetyStaff) return;
-
         const handleEmergency = (data) => {
             if (data.event === 'emergency-triggered') {
                 try {

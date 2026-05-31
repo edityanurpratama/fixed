@@ -24,6 +24,6 @@ router.get('/my-history', protect, getMyHistory);
 router.get('/all', protect, authorize('Admin', 'HSE', 'Manager', 'Supervisor'), getAllHistory);
 
 router.post('/leave', protect, handleUpload('document_proof'), submitLeave);
-router.put('/leave/:id_leave', protect, authorize('Admin', 'HSE', 'Manager', 'Supervisor'), approveLeave);
+router.put('/leave/:id_leave', protect, authorize('Admin', 'Supervisor'), approveLeave);
 
 module.exports = router;

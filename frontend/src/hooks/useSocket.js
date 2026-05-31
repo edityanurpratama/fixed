@@ -8,11 +8,9 @@ export const useSocket = () => {
 
     useEffect(() => {
         if (!socket) {
-            // Adjust URL to point to backend. 
-            // In dev mode, React runs on 5173 and Node on 5000.
-            const backendUrl = import.meta.env.VITE_API_URL 
-                ? import.meta.env.VITE_API_URL.replace('/api', '') 
-                : 'http://localhost:5000';
+            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '';
+            const backendUrl = import.meta.env.VITE_SOCKET_URL ||
+                (apiBaseUrl.startsWith('http') ? apiBaseUrl.replace(/\/api\/?$/, '') : window.location.origin);
                 
             socket = io(backendUrl);
 
